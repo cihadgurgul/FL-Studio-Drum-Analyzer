@@ -1,0 +1,9 @@
+{
+    "flp_directory": "C:/Users/YourName/Documents/Image-Line/FL Studio/Projects",
+    "drum_kits_directories": [
+        "C:/Users/YourName/Drum Kits",
+        "C:/Program Files/Image-Line/FL Studio 2024/Data/Patches/Packs/My Drums"
+    ],
+    "unused_directory": "C:/Users/YourName/Drum Kits/_unused",
+    "unused_threshold_days": 90
+}
