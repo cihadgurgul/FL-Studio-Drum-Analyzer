@@ -79,6 +79,15 @@ Not sure where your stuff is? Here's how to find out:
 - **FL Studio projects:** Open FL Studio → Options → File Settings → look at the "Backup" or "Data" folder path. Your projects are usually in `Documents/Image-Line/FL Studio/Projects`.
 - **Drum kits:** Wherever you unzipped them. Check FL Studio's browser panel — right-click a folder to see its location on disk.
 
+## Supported File Types
+
+| File type | How it's handled |
+|-----------|-----------------|
+| `.flp` | Scanned directly |
+| `.zip` containing `.flp` files | Automatically opened and any `.flp` files inside are scanned |
+
+You don't need to unzip anything — just point `flp_directory` at your projects folder and the tool handles the rest. This is useful if you back up or share projects as zip files.
+
 ## Usage
 
 Open a terminal in the tool's folder and run these commands:
@@ -89,7 +98,7 @@ Open a terminal in the tool's folder and run these commands:
 python main.py scan
 ```
 
-This reads all your `.flp` files (including any `.flp` files inside `.zip` archives) and builds a database of which samples are used where. First scan may take a minute depending on how many projects you have. After that, it only re-scans files that changed.
+This reads all your `.flp` files and any `.flp` files found inside `.zip` archives, then builds a database of which samples are used where. First scan may take a minute depending on how many projects you have. After that, it only re-scans files (or zips) that changed.
 
 ### See your most-used samples
 
@@ -184,6 +193,9 @@ It only tracks samples that live inside your configured `drum_kits_directories`.
 
 **Can I add multiple drum kit folders?**
 Yes. Add as many paths as you want to the `drum_kits_directories` array in `config.json`.
+
+**What about projects saved as .zip files?**
+They're scanned automatically. If you have zipped FL Studio projects in your `flp_directory`, the tool will look inside each `.zip` for `.flp` files and scan those too. No need to unzip anything first.
 
 **It says "No .flp files found"?**
 Double-check that `flp_directory` in your `config.json` points to the right folder, and make sure you're using forward slashes `/`.
