@@ -2,7 +2,9 @@ import glob
 import logging
 import os
 import pathlib
+import tempfile
 import time
+import zipfile
 
 import pyflp
 
@@ -78,6 +80,33 @@ def scan_flp(flp_path: str) -> list[str]:
         return []
 
 
+def scan_flp_from_zip(zip_path: str, flp_name: str) -> list[str]:
+    """Extract an FLP from a zip archive and return its sample paths."""
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            with zf.open(flp_name) as flp_data:
+                with tempfile.NamedTemporaryFile(suffix=".flp", delete=False) as tmp:
+                    tmp.write(flp_data.read())
+                    tmp_path = tmp.name
+        try:
+            return scan_flp(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+    except Exception as e:
+        logger.warning("Failed to read %s from %s: %s", flp_name, zip_path, e)
+        return []
+
+
+def _list_flps_in_zip(zip_path: str) -> list[str]:
+    """Return names of .flp files inside a zip archive."""
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            return [n for n in zf.namelist() if n.lower().endswith(".flp")]
+    except Exception as e:
+        logger.warning("Failed to open zip %s: %s", zip_path, e)
+        return []
+
+
 def _find_matching_kit_dir(sample_path: str, drum_kits_dirs: list[str]) -> str | None:
     """Return the drum kits directory that contains this sample, or None."""
     for d in drum_kits_dirs:
@@ -93,20 +122,30 @@ def scan_all(config: dict) -> dict:
 
     stats = {"scanned": 0, "skipped": 0, "errors": 0, "broken_refs": 0}
 
-    # Collect all .flp files, skipping Backup subfolders
+    # Collect all .flp and .zip files, skipping Backup subfolders
     flp_files = []
+    zip_files = []
     for root, dirs, files in os.walk(flp_directory):
         dirs[:] = [d for d in dirs if d.lower() != "backup"]
         for f in files:
             if f.lower().endswith(".flp"):
                 flp_files.append(os.path.join(root, f))
+            elif f.lower().endswith(".zip"):
+                zip_files.append(os.path.join(root, f))
 
-    total = len(flp_files)
+    # Expand zips: find .flp files inside each zip
+    zip_entries = []  # list of (zip_path, flp_name_inside_zip)
+    for zf in zip_files:
+        for flp_name in _list_flps_in_zip(zf):
+            zip_entries.append((zf, flp_name))
+
+    total = len(flp_files) + len(zip_entries)
     if total == 0:
         print("No .flp files found in", flp_directory)
         return stats
 
-    print(f"Found {total} FLP files. Scanning...")
+    zip_msg = f" + {len(zip_entries)} in {len(zip_files)} zip(s)" if zip_entries else ""
+    print(f"Found {len(flp_files)} FLP files{zip_msg}. Scanning...")
 
     conn = db.get_connection()
     batch_count = 0
@@ -160,6 +199,57 @@ def scan_all(config: dict) -> dict:
         batch_count += 1
 
         # Commit every 50 FLPs
+        if batch_count >= 50:
+            conn.commit()
+            batch_count = 0
+
+    # Scan .flp files inside .zip archives
+    for j, (zip_path, flp_name) in enumerate(zip_entries):
+        idx = len(flp_files) + j + 1
+        display_name = f"{os.path.basename(zip_path)}:{flp_name}"
+        print(f"  [{idx}/{total}] {display_name}", end="\r")
+
+        # Use zip path + internal name as the identifier
+        virtual_path = normalize_path(zip_path) + "::" + flp_name
+
+        try:
+            mtime = os.path.getmtime(zip_path)
+        except OSError as e:
+            logger.warning("Cannot access %s: %s", zip_path, e)
+            stats["errors"] += 1
+            continue
+
+        # Incremental scan: skip if zip mtime unchanged
+        prev_mtime = db.get_scan_mtime(conn, virtual_path)
+        if prev_mtime is not None and prev_mtime == mtime:
+            stats["skipped"] += 1
+            continue
+
+        samples = scan_flp_from_zip(zip_path, flp_name)
+
+        db.clear_samples_for_flp(conn, virtual_path)
+
+        for sample in samples:
+            sample = resolve_fl_path(sample)
+
+            if not os.path.isabs(sample):
+                sample = str(pathlib.Path(zip_path).parent / sample)
+
+            matched_dir = _find_matching_kit_dir(sample, drum_kits_dirs)
+            if matched_dir is None:
+                continue
+
+            if not os.path.exists(sample):
+                logger.info("Broken reference in %s: %s", virtual_path, sample)
+                stats["broken_refs"] += 1
+
+            kit = extract_kit_folder(sample, matched_dir)
+            db.insert_sample(conn, normalize_path(sample), kit, virtual_path)
+
+        db.upsert_scan(conn, virtual_path, mtime, time.time())
+        stats["scanned"] += 1
+        batch_count += 1
+
         if batch_count >= 50:
             conn.commit()
             batch_count = 0

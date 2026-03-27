@@ -6,7 +6,7 @@ If you're like most producers, you've downloaded way more drum kits than you'll 
 
 ## What It Does
 
-- **Scans** all your `.flp` project files and tracks every drum sample used
+- **Scans** all your `.flp` project files (including ones inside `.zip` archives) and tracks every drum sample used
 - **Ranks** your most-used samples and kits
 - **Finds unused kits** — ones you've never touched or haven't used in months
 - **Safely archives** unused kits to a folder you choose (with undo support)
@@ -89,7 +89,7 @@ Open a terminal in the tool's folder and run these commands:
 python main.py scan
 ```
 
-This reads all your `.flp` files and builds a database of which samples are used where. First scan may take a minute depending on how many projects you have. After that, it only re-scans files that changed.
+This reads all your `.flp` files (including any `.flp` files inside `.zip` archives) and builds a database of which samples are used where. First scan may take a minute depending on how many projects you have. After that, it only re-scans files that changed.
 
 ### See your most-used samples
 
